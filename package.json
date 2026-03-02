@@ -1,0 +1,14 @@
+{
+  "name": "ag0-template-sticker-moodboard-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "ui:dev": "cd ui && pnpm install && pnpm dev",
+    "agent:dev": "VITE_PORT=5173 deno run --allow-all --env main.ts",
+    "dev:all": "concurrently --names \"ui,agent\" -c cyan,magenta \"bun run ui:dev\" \"bun run agent:dev\"",
+    "dev": "bun run dev:all"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,21 @@
+// AG0 Process Manager Configuration
+{
+  "processes": {
+    // User backend server (Hono + Zypher Agent)
+    "backend": {
+      "command": "deno",
+      "args": ["run", "--watch=api", "-A", "/workspace/main.ts"],
+      "env": {
+        "PORT": "8080",
+        "VITE_PORT": "5173"
+      }
+    },
+    // Frontend dev server (Vite + React via pnpm)
+    "frontend": {
+      "command": "pnpm",
+      "args": ["dev"],
+      "cwd": "/workspace/ui",
+      "setup": ["pnpm install"]
+    }
+  }
+}
