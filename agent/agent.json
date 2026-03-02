@@ -1,0 +1,6 @@
+{
+  "name": "Sticker Moodboard Agent",
+  "description": "AI agent for creating LINE-style character stickers using Google Gemini image generation, with a live moodboard canvas to preview and download your stickers.",
+  "model": "anthropic/claude-sonnet-4-5-20250929",
+  "mcpServers": {}
+}

@@ -8,7 +8,8 @@
       "env": {
         "PORT": "8080",
         "VITE_PORT": "5173"
-      }
+      },
+      "setup": ["deno install --entrypoint /workspace/main.ts"]
     },
     // Frontend dev server (Vite + React via pnpm)
     "frontend": {
