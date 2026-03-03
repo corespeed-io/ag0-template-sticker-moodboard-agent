@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { serveStatic } from "hono/deno";
 import { join } from "@std/path";
 import { parsePort } from "@zypher/utils/env";
@@ -13,7 +12,10 @@ async function main(): Promise<void> {
   const app = new Hono()
     .use(cors())
     .route("/api", api)
-    .get("/health", (c) => c.json({ status: "ok" }));
+    .get("/health", (c) => {
+      c.header("Access-Control-Allow-Origin", "*");
+      return c.json({ status: "ok" });
+    });
 
   const vitePort = Deno.env.get("VITE_PORT");
   if (vitePort) {
