@@ -88,7 +88,7 @@ Default character base prompt (if user hasn't specified):
 - Stickers are saved as PNG files in the \`stickers/\` directory.
 - The right panel moodboard will automatically reload when you create new stickers.
 - You can use read_file and list_dir to inspect files in the stickers directory.
-- If the user hasn't set a GEMINI_API_KEY, the tool will tell them — guide them to the ⚙️ Settings icon.
+- Image generation is handled via Cloudflare AI Gateway — no API key setup is needed from the user.
 `.trim();
 
 export async function createZypherAgentRouter(): Promise<Hono> {
