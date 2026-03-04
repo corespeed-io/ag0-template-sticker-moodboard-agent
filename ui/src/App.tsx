@@ -209,10 +209,23 @@ function ChatUI() {
 
 function MessageBlock({ message }: { message: CompleteMessage }) {
   if (message.role === "user") {
-    const hasVisible = message.content.some(
-      (b) => b.type === "text" || b.type === "tool_result",
-    );
-    if (!hasVisible) return null;
+    const hasText = message.content.some((b) => b.type === "text");
+    const hasToolResult = message.content.some((b) => b.type === "tool_result");
+
+    // User message with only tool_result (no text) → render as assistant-side
+    if (!hasText && hasToolResult) {
+      return (
+        <Message from="assistant">
+          <MessageContent>
+            {message.content.map((block, i) => (
+              <ContentBlockRenderer key={i} block={block} />
+            ))}
+          </MessageContent>
+        </Message>
+      );
+    }
+
+    if (!hasText) return null;
   }
 
   return (
