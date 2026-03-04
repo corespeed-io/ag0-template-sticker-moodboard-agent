@@ -2,7 +2,7 @@
  * create_sticker — Zypher Agent Tool
  *
  * Generates a LINE-style character sticker using Google Gemini image generation
- * via Cloudflare AI Gateway.
+ * via Cloudflare AI Gateway (native generateContent endpoint).
  * Saves the result as a PNG in the stickers/ directory.
  */
 
@@ -31,7 +31,7 @@ function sanitizeFilename(desc: string): string {
   return name.slice(0, 60) || `sticker_${Date.now()}`;
 }
 
-// ── Gemini image generation via AI Gateway (OpenAI-compatible) ───
+// ── Gemini image generation via AI Gateway (native generateContent) ───
 
 async function generateStickerImage(
   prompt: string,
@@ -39,13 +39,13 @@ async function generateStickerImage(
   const gatewayBaseUrl = getRequiredEnv("AI_GATEWAY_BASE_URL");
   const apiToken = getRequiredEnv("AI_GATEWAY_API_TOKEN");
 
-  const url = `${gatewayBaseUrl}/google-ai-studio/v1beta/openai/images/generations`;
+  const url = `${gatewayBaseUrl}/google-ai-studio/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
   const body = {
-    model: GEMINI_MODEL,
-    prompt,
-    n: 1,
-    response_format: "b64_json",
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ["TEXT", "IMAGE"],
+    },
   };
 
   const res = await fetch(url, {
@@ -64,12 +64,21 @@ async function generateStickerImage(
 
   const result = await res.json();
 
-  const b64Data = result.data?.[0]?.b64_json;
-  if (!b64Data) {
+  // Find the inlineData part containing the image
+  const parts = result.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) {
+    throw new Error("No candidates in Gemini response");
+  }
+
+  const imagePart = parts.find(
+    (p: { inlineData?: { mimeType?: string; data?: string } }) =>
+      p.inlineData?.data,
+  );
+  if (!imagePart?.inlineData?.data) {
     throw new Error("No image in Gemini response");
   }
 
-  const binaryString = atob(b64Data);
+  const binaryString = atob(imagePart.inlineData.data);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
