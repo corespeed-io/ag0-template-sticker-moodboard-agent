@@ -301,7 +301,7 @@ export default function StickerPanel({ wsEvent }: Props) {
   // ── Download ────────────────────────────────────────────────
 
   const handleDownload = (sticker: Sticker) => {
-    window.open(`/api/sticker?path=${encodeURIComponent(sticker.path)}`, "_blank");
+    window.open(`/api/sticker?path=${encodeURIComponent(sticker.path)}&download`, "_blank");
   };
 
   // ── Render ──────────────────────────────────────────────────

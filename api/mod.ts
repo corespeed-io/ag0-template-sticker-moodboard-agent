@@ -173,6 +173,8 @@ const app = new Hono()
       return c.json({ error: "Path traversal not allowed" }, 403);
     }
 
+    const download = c.req.query("download") !== undefined;
+
     try {
       const file = await Deno.readFile(absPath);
       const ext = absPath.split(".").pop()?.toLowerCase();
@@ -184,12 +186,15 @@ const app = new Hono()
           : ext === "jpg" || ext === "jpeg"
           ? "image/jpeg"
           : "application/octet-stream";
-      return new Response(file, {
-        headers: {
-          "Content-Type": contentType,
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
+      const filename = absPath.split("/").pop() ?? "sticker.png";
+      const headers: Record<string, string> = {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=3600",
+      };
+      if (download) {
+        headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+      }
+      return new Response(file, { headers });
     } catch (err) {
       if (err instanceof Deno.errors.NotFound) {
         return c.json({ error: "File not found" }, 404);
