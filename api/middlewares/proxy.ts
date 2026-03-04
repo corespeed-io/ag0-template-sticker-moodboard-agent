@@ -8,11 +8,7 @@ import { proxy as honoProxy } from "hono/proxy";
  * The built-in `hono/proxy` does not support WebSocket upgrades,
  * so this middleware handles them manually.
  */
-export function proxy(
-  origin: string,
-  options: { stripPrefix?: string } = {},
-): MiddlewareHandler {
-  const { stripPrefix = "" } = options;
+export function proxy(origin: string): MiddlewareHandler {
   const base = new URL(origin);
   // Strip trailing slash to avoid double slashes when joining with target.pathname
   const basePath = base.pathname.replace(/\/$/, "");
@@ -21,17 +17,17 @@ export function proxy(
     const target = new URL(c.req.url);
     target.host = base.host;
     target.protocol = base.protocol;
-    const rawPath = target.pathname;
-    const strippedPath = stripPrefix && rawPath.startsWith(stripPrefix)
-      ? rawPath.slice(stripPrefix.length) || "/"
-      : rawPath;
-    target.pathname = basePath + strippedPath;
+    target.pathname = basePath + target.pathname;
 
     // WebSocket upgrade
     if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
-      const { socket, response } = Deno.upgradeWebSocket(c.req.raw);
+      // Forward subprotocol (e.g. "vite-hmr") so the browser accepts the connection
+      const protocol = c.req.header("sec-websocket-protocol");
+      const { socket, response } = Deno.upgradeWebSocket(c.req.raw, {
+        ...(protocol && { protocol }),
+      });
       target.protocol = base.protocol === "https:" ? "wss:" : "ws:";
-      const upstream = new WebSocket(target);
+      const upstream = new WebSocket(target, protocol ?? []);
 
       upstream.onopen = () => {
         socket.onmessage = (e) => upstream.send(e.data);

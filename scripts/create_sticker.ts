@@ -1,18 +1,17 @@
 #!/usr/bin/env -S deno run --allow-all
 /**
- * Create Sticker — Generate LINE-style stickers using Google Gemini.
+ * Create Sticker — Generate LINE-style stickers using Google Gemini via AI Gateway.
+ * Uses OpenAI-compatible images/generations endpoint.
  *
  * Usage:
  *   deno run --allow-all scripts/create_sticker.ts "waving hello cheerfully"
  *   deno run --allow-all scripts/create_sticker.ts "thumbs up" --character "chibi girl with cat ears"
- *   deno run --allow-all scripts/create_sticker.ts "drinking tea" --reference assets/ref.jpg
  *   deno run --allow-all scripts/create_sticker.ts --ideas
  */
 
 import { resolve, dirname, fromFileUrl } from "jsr:@std/path";
 import { ensureDir } from "jsr:@std/fs";
 import { parseArgs } from "jsr:@std/cli/parse-args";
-import { encodeBase64 } from "jsr:@std/encoding/base64";
 
 const SCRIPT_DIR = dirname(fromFileUrl(import.meta.url));
 const PROJECT_ROOT = resolve(SCRIPT_DIR, "..");
@@ -50,18 +49,13 @@ const STICKER_IDEAS = [
 
 // ── Helpers ──────────────────────────────────────────────
 
-function getApiKey(): string {
-  const key = Deno.env.get("GEMINI_API_KEY");
-  if (!key) {
-    console.error(
-      "Error: GEMINI_API_KEY environment variable is not set.\n\n" +
-      "To configure:\n" +
-      "  1. Get an API key at https://aistudio.google.com/apikey\n" +
-      '  2. export GEMINI_API_KEY="your-key-here"\n'
-    );
+function getRequiredEnv(name: string): string {
+  const val = Deno.env.get(name);
+  if (!val) {
+    console.error(`Error: ${name} environment variable is not set.`);
     Deno.exit(1);
   }
-  return key;
+  return val;
 }
 
 function sanitizeFilename(desc: string): string {
@@ -72,55 +66,31 @@ function sanitizeFilename(desc: string): string {
   return name.slice(0, 60) || `sticker_${Date.now()}`;
 }
 
-async function readImageAsBase64(path: string): Promise<{ data: string; mimeType: string }> {
-  const bytes = await Deno.readFile(path);
-  const ext = path.split(".").pop()?.toLowerCase();
-  const mimeType = ext === "png" ? "image/png"
-    : ext === "webp" ? "image/webp"
-    : ext === "gif" ? "image/gif"
-    : "image/jpeg";
-  return { data: encodeBase64(bytes), mimeType };
-}
-
-// ── Gemini Image Generation ──────────────────────────────
+// ── Gemini Image Generation via AI Gateway (OpenAI-compatible) ───
 
 async function generateSticker(
   prompt: string,
-  apiKey: string,
+  gatewayBaseUrl: string,
+  apiToken: string,
   model: string,
-  referencePath?: string,
 ): Promise<Uint8Array> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  // Build parts array
-  const parts: unknown[] = [{ text: prompt }];
-
-  // Add reference image if provided
-  if (referencePath) {
-    try {
-      const { data, mimeType } = await readImageAsBase64(referencePath);
-      parts.push({
-        inlineData: { mimeType, data },
-      });
-      console.log(`  📎 Reference image: ${referencePath}`);
-    } catch (err) {
-      console.error(`  ⚠��  Failed to read reference image: ${err}`);
-    }
-  }
+  const url = `${gatewayBaseUrl}/google-ai-studio/v1beta/openai/images/generations`;
 
   const body = {
-    contents: [{ parts }],
-    generationConfig: {
-      responseModalities: ["IMAGE"],
-      temperature: 1.0,
-    },
+    model,
+    prompt,
+    n: 1,
+    response_format: "b64_json",
   };
 
-  console.log(`  🖌️  Calling ${model}...`);
+  console.log(`  Calling ${model} via AI Gateway (OpenAI-compatible)...`);
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiToken}`,
+    },
     body: JSON.stringify(body),
   });
 
@@ -131,43 +101,26 @@ async function generateSticker(
 
   const result = await res.json();
 
-  // Extract image from response
-  for (const candidate of result.candidates ?? []) {
-    for (const part of candidate.content?.parts ?? []) {
-      if (part.inlineData?.data) {
-        // Decode base64 image
-        const binaryString = atob(part.inlineData.data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes;
-      }
-    }
+  const b64Data = result.data?.[0]?.b64_json;
+  if (!b64Data) {
+    throw new Error("No image in Gemini response");
   }
 
-  // Show text response for debugging
-  for (const candidate of result.candidates ?? []) {
-    for (const part of candidate.content?.parts ?? []) {
-      if (part.text) {
-        console.error(`  Model response: ${part.text}`);
-      }
-    }
+  const binaryString = atob(b64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
-
-  console.error("Full API response:", JSON.stringify(result, null, 2));
-  throw new Error("No image in Gemini response");
+  return bytes;
 }
 
 // ── Main ─────────────────────────────────────────────────
 
 async function main() {
   const args = parseArgs(Deno.args, {
-    string: ["character", "reference", "model"],
+    string: ["character", "model"],
     boolean: ["ideas", "help"],
-    default: {
-      model: DEFAULT_MODEL,
-    },
+    default: { model: DEFAULT_MODEL },
   });
 
   if (args.help) {
@@ -175,15 +128,18 @@ async function main() {
 
 Options:
   --character   Character description prompt
-  --reference   Path to reference image
   --model       Gemini model (default: ${DEFAULT_MODEL})
   --ideas       Print sticker ideas
-  --help        Show this help`);
+  --help        Show this help
+
+Environment:
+  AI_GATEWAY_BASE_URL   Cloudflare AI Gateway base URL
+  AI_GATEWAY_API_TOKEN  AI Gateway auth token`);
     return;
   }
 
   if (args.ideas) {
-    console.log("🎨 Sticker ideas:");
+    console.log("Sticker ideas:");
     for (let i = 0; i < STICKER_IDEAS.length; i++) {
       console.log(`  ${(i + 1).toString().padStart(2)}. ${STICKER_IDEAS[i]}`);
     }
@@ -197,31 +153,26 @@ Options:
     Deno.exit(1);
   }
 
-  const apiKey = getApiKey();
+  const gatewayBaseUrl = getRequiredEnv("AI_GATEWAY_BASE_URL");
+  const apiToken = getRequiredEnv("AI_GATEWAY_API_TOKEN");
   const characterPrompt = args.character || DEFAULT_CHARACTER;
   const filename = sanitizeFilename(description);
 
-  console.log(`🎨 Generating sticker: ${description}`);
+  console.log(`Generating sticker: ${description}`);
 
   const fullPrompt = `${characterPrompt}\nAction/Pose: ${description}`;
 
-  // 1. Generate
   const imageBytes = await generateSticker(
-    fullPrompt,
-    apiKey,
-    args.model,
-    args.reference,
+    fullPrompt, gatewayBaseUrl, apiToken, args.model,
   );
-  console.log("  ✅ Generated!");
+  console.log("  Generated!");
 
-  // 2. Save
   await ensureDir(STICKERS_DIR);
   const outputPath = resolve(STICKERS_DIR, `${filename}.png`);
   await Deno.writeFile(outputPath, imageBytes);
-  console.log(`  💾 Saved: ${outputPath}`);
+  console.log(`  Saved: ${outputPath}`);
 
-  console.log(`\n✅ Sticker ready: ${outputPath}`);
-  // Output path for programmatic use
+  console.log(`\nSticker ready: ${outputPath}`);
   console.log(`STICKER_PATH:stickers/${filename}.png`);
 }
 

@@ -6,7 +6,7 @@
  *
  * Includes:
  *   /api/agent/*    — Zypher Agent (chat, streaming, message history)
- *   /api/config     — Get/set Gemini API key
+ *   /api/config     — Check gateway configuration
  *   /api/stickers   — List / delete sticker images
  *   /api/sticker    — Serve individual sticker image
  *   /api/ws         — WebSocket for file-change notifications
@@ -16,11 +16,6 @@ import { cors } from "hono/cors";
 import { relative, resolve } from "@std/path";
 import { walk } from "@std/fs/walk";
 import { createZypherAgentRouter } from "./agent.ts";
-import {
-  getFalApiKey,
-  isFalApiKeySet,
-  setFalApiKey,
-} from "./config.ts";
 
 const PROJECT_ROOT = Deno.cwd();
 const STICKERS_DIR = resolve(PROJECT_ROOT, "stickers");
@@ -79,30 +74,12 @@ const app = new Hono()
   // Zypher Agent API
   .route("/agent", await createZypherAgentRouter())
 
-  // ── Config endpoints ─────────────────────────────────────────────────────
+  // ── Config endpoint ──────────────────────────────────────────────────────
 
   .get("/config", (c) => {
     return c.json({
-      hasApiKey: isFalApiKeySet(),
-      // Return masked key for display
-      apiKeyPreview: getFalApiKey()
-        ? `${getFalApiKey()!.slice(0, 8)}...${getFalApiKey()!.slice(-4)}`
-        : null,
+      gatewayConfigured: !!(Deno.env.get("AI_GATEWAY_BASE_URL") && Deno.env.get("AI_GATEWAY_API_TOKEN")),
     });
-  })
-
-  .post("/config", async (c) => {
-    try {
-      const body = await c.req.json();
-      if (!body.falApiKey || typeof body.falApiKey !== "string") {
-        return c.json({ error: "falApiKey is required" }, 400);
-      }
-      setFalApiKey(body.falApiKey.trim());
-      return c.json({ ok: true, hasApiKey: true });
-    } catch (err) {
-      console.error("[API] Error setting config:", err);
-      return c.json({ error: "Failed to set config" }, 500);
-    }
   })
 
   // ── WebSocket for file-change events ─────────────────────────────────────

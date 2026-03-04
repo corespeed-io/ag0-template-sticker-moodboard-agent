@@ -1,8 +1,8 @@
 /**
  * create_sticker — Zypher Agent Tool
  *
- * Generates a LINE-style character sticker using fal.ai Nano Banana 2
- * (Google Gemini 3.1 Flash Image architecture).
+ * Generates a LINE-style character sticker using Google Gemini image generation
+ * via Cloudflare AI Gateway (native generateContent endpoint).
  * Saves the result as a PNG in the stickers/ directory.
  */
 
@@ -10,9 +10,11 @@ import { resolve } from "@std/path";
 import { ensureDir } from "@std/fs";
 import { createTool } from "@zypher/agent/tools";
 import { z } from "zod";
-import { getFalApiKey } from "../config.ts";
+import { getRequiredEnv } from "@zypher/utils/env";
 
 const STICKERS_DIR = resolve(Deno.cwd(), "stickers");
+
+const GEMINI_MODEL = "gemini-2.5-flash-image";
 
 const DEFAULT_CHARACTER = `Chibi sticker of a cute character.
 Keep the shading and rendering style, but in chibi proportions (large head, small body, 2.5 head ratio).
@@ -29,54 +31,59 @@ function sanitizeFilename(desc: string): string {
   return name.slice(0, 60) || `sticker_${Date.now()}`;
 }
 
-// ── fal.ai Nano Banana 2 image generation ────────────────
+// ── Gemini image generation via AI Gateway (native generateContent) ───
 
 async function generateStickerImage(
   prompt: string,
-  apiKey: string,
 ): Promise<Uint8Array> {
-  // fal.ai synchronous endpoint
-  const url = "https://fal.run/fal-ai/nano-banana-2";
+  const gatewayBaseUrl = getRequiredEnv("AI_GATEWAY_BASE_URL");
+  const apiToken = getRequiredEnv("AI_GATEWAY_API_TOKEN");
+
+  const url = `${gatewayBaseUrl}/google-ai-studio/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
   const body = {
-    prompt,
-    aspect_ratio: "1:1",
-    resolution: "1K",
-    num_images: 1,
-    output_format: "png",
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ["TEXT", "IMAGE"],
+    },
   };
 
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Key ${apiKey}`,
+      "Authorization": `Bearer ${apiToken}`,
     },
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`fal.ai API error ${res.status}: ${errText}`);
+    throw new Error(`Gemini API error ${res.status}: ${errText}`);
   }
 
   const result = await res.json();
 
-  // fal.ai returns { images: [{ url, content_type }], ... }
-  const imageUrl = result?.images?.[0]?.url;
-  if (!imageUrl) {
-    throw new Error(
-      `No image in fal.ai response: ${JSON.stringify(result).slice(0, 500)}`,
-    );
+  // Find the inlineData part containing the image
+  const parts = result.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) {
+    throw new Error("No candidates in Gemini response");
   }
 
-  // Download the image
-  const imgRes = await fetch(imageUrl);
-  if (!imgRes.ok) {
-    throw new Error(`Failed to download image: ${imgRes.status}`);
+  const imagePart = parts.find(
+    (p: { inlineData?: { mimeType?: string; data?: string } }) =>
+      p.inlineData?.data,
+  );
+  if (!imagePart?.inlineData?.data) {
+    throw new Error("No image in Gemini response");
   }
 
-  return new Uint8Array(await imgRes.arrayBuffer());
+  const binaryString = atob(imagePart.inlineData.data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
 }
 
 // ── Tool Definition ──────────────────────────────────────
@@ -84,7 +91,7 @@ async function generateStickerImage(
 export const CreateStickerTool = createTool({
   name: "create_sticker",
   description:
-    "Generate a LINE-style character sticker image using fal.ai Nano Banana 2 (Gemini 3.1 Flash Image). " +
+    "Generate a LINE-style character sticker image using Google Gemini image generation. " +
     "Provide a short action/pose description (e.g. 'chibi cat girl waving hello cheerfully'). " +
     "Optionally provide a character description to prepend to the prompt. " +
     "The sticker is saved as a PNG in the stickers/ directory and appears on the moodboard automatically.",
@@ -102,28 +109,13 @@ export const CreateStickerTool = createTool({
       ),
   }),
   async execute(params) {
-    const apiKey = getFalApiKey();
-    if (!apiKey) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: "Error: FAL_KEY is not configured. Please click the ⚙️ Settings icon in the UI to enter your fal.ai API key (get one at https://fal.ai/dashboard/keys).",
-          },
-        ],
-        isError: true,
-      };
-    }
-
     const characterPrompt = params.character || DEFAULT_CHARACTER;
     const filename = sanitizeFilename(params.description);
     const fullPrompt = `${characterPrompt}\nAction/Pose: ${params.description}`;
 
     try {
-      // Generate
-      const imageBytes = await generateStickerImage(fullPrompt, apiKey);
+      const imageBytes = await generateStickerImage(fullPrompt);
 
-      // Save
       await ensureDir(STICKERS_DIR);
       const outputPath = resolve(STICKERS_DIR, `${filename}.png`);
       await Deno.writeFile(outputPath, imageBytes);
@@ -134,7 +126,7 @@ export const CreateStickerTool = createTool({
         content: [
           {
             type: "text" as const,
-            text: `✅ Sticker created successfully!\n\n📁 Saved to: ${relativePath}\n🎨 Description: ${params.description}\n🖌️ Model: Nano Banana 2 (Gemini 3.1 Flash Image)\n\nThe sticker is now visible on the moodboard panel.`,
+            text: `✅ Sticker created successfully!\n\n📁 Saved to: ${relativePath}\n🎨 Description: ${params.description}\n🖌️ Model: ${GEMINI_MODEL}\n\nThe sticker is now visible on the moodboard panel.`,
           },
         ],
       };

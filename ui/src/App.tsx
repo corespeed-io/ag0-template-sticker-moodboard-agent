@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Trash2Icon, SettingsIcon } from "lucide-react";
+import { Trash2Icon } from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -40,7 +40,6 @@ import {
   useAgentContext,
 } from "@/lib/zypher-ui";
 import StickerPanel from "@/components/StickerPanel.tsx";
-import ApiKeyDialog from "@/components/ApiKeyDialog.tsx";
 
 const client = new TaskApiClient({
   baseUrl:
@@ -55,22 +54,7 @@ const WS_URL = new URL("/api/ws", window.location.origin)
 
 function App() {
   const [wsEvent, setWsEvent] = useState<MessageEvent | null>(null);
-  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-
-  // Check if API key is configured on mount
-  useEffect(() => {
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((data) => {
-        setHasApiKey(data.hasApiKey);
-        if (!data.hasApiKey) {
-          setShowApiKeyDialog(true);
-        }
-      })
-      .catch(() => setHasApiKey(false));
-  }, []);
 
   // WebSocket connection
   useEffect(() => {
@@ -104,10 +88,7 @@ function App() {
       <div className="flex h-screen w-full overflow-hidden">
         {/* Left panel: Agent chat */}
         <div className="flex flex-col w-[420px] min-w-80 border-r">
-          <ChatUI
-            onOpenSettings={() => setShowApiKeyDialog(true)}
-            hasApiKey={hasApiKey}
-          />
+          <ChatUI />
         </div>
 
         {/* Right panel: Sticker moodboard */}
@@ -115,13 +96,6 @@ function App() {
           <StickerPanel wsEvent={wsEvent} />
         </div>
       </div>
-
-      {/* API Key Dialog */}
-      <ApiKeyDialog
-        open={showApiKeyDialog}
-        onClose={() => setShowApiKeyDialog(false)}
-        onSaved={() => setHasApiKey(true)}
-      />
     </AgentProvider>
   );
 }
@@ -130,13 +104,7 @@ function App() {
 // Chat UI
 // ---------------------------------------------------------------------------
 
-function ChatUI({
-  onOpenSettings,
-  hasApiKey,
-}: {
-  onOpenSettings: () => void;
-  hasApiKey: boolean | null;
-}) {
+function ChatUI() {
   const {
     messages,
     streamingMessages,
@@ -170,17 +138,6 @@ function ChatUI({
           <h1 className="font-semibold text-lg">Sticker Moodboard</h1>
         </div>
         <div className="flex items-center gap-1">
-          {hasApiKey === false && (
-            <span className="text-xs text-destructive mr-1">No API key</span>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onOpenSettings}
-            title="Settings"
-          >
-            <SettingsIcon className="size-4" />
-          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -252,10 +209,23 @@ function ChatUI({
 
 function MessageBlock({ message }: { message: CompleteMessage }) {
   if (message.role === "user") {
-    const hasVisible = message.content.some(
-      (b) => b.type === "text" || b.type === "tool_result",
-    );
-    if (!hasVisible) return null;
+    const hasText = message.content.some((b) => b.type === "text");
+    const hasToolResult = message.content.some((b) => b.type === "tool_result");
+
+    // User message with only tool_result (no text) → render as assistant-side
+    if (!hasText && hasToolResult) {
+      return (
+        <Message from="assistant">
+          <MessageContent>
+            {message.content.map((block, i) => (
+              <ContentBlockRenderer key={i} block={block} />
+            ))}
+          </MessageContent>
+        </Message>
+      );
+    }
+
+    if (!hasText) return null;
   }
 
   return (

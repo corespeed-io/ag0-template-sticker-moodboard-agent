@@ -2,15 +2,15 @@
 
 ## Project Overview
 
-A Zypher-powered AI agent that generates LINE-style character stickers using Google Gemini.
+A Zypher-powered AI agent that generates LINE-style character stickers using Google Gemini via Cloudflare AI Gateway.
 Layout: Chat panel (left) + Sticker moodboard canvas (right).
 
 ## Architecture
 
 - **Backend** (Deno + Hono): `main.ts` → `api/mod.ts` → `api/agent.ts`
-- **Frontend** (React + Vite): `ui/src/App.tsx` with `StickerPanel.tsx` + `ApiKeyDialog.tsx`
+- **Frontend** (React + Vite): `ui/src/App.tsx` with `StickerPanel.tsx`
 - **Agent SDK**: Zypher (`@zypher/agent`, `@zypher/http`) for agent loop, tools, streaming
-- **Sticker Generation**: `scripts/create_sticker.ts` calls Gemini image gen API
+- **Sticker Generation**: Gemini image gen via Cloudflare AI Gateway (BYOK)
 
 ## Key Files
 
@@ -18,11 +18,11 @@ Layout: Chat panel (left) + Sticker moodboard canvas (right).
 |------|---------|
 | `api/agent.ts` | Zypher agent config, Gemini model, system prompt |
 | `api/mod.ts` | API routes: `/api/stickers`, `/api/config`, `/api/ws` |
-| `api/config.ts` | Runtime API key store |
-| `scripts/create_sticker.ts` | Gemini image generation script |
+| `api/config.ts` | Runtime gateway configuration checks |
+| `api/tools/create_sticker_tool.ts` | Gemini image generation tool (via AI Gateway) |
+| `scripts/create_sticker.ts` | Gemini image generation CLI script |
 | `ui/src/App.tsx` | Main UI: chat + moodboard layout |
 | `ui/src/components/StickerPanel.tsx` | Sticker grid with preview/download |
-| `ui/src/components/ApiKeyDialog.tsx` | API key input modal |
 
 ## Commands
 
@@ -35,8 +35,7 @@ cd ui && pnpm build    # Build frontend for production
 
 ## API Endpoints
 
-- `GET /api/config` — Check if API key is set
-- `POST /api/config` — Set Gemini API key `{ geminiApiKey: "..." }`
+- `GET /api/config` — Check if AI Gateway is configured
 - `GET /api/stickers` — List all stickers
 - `DELETE /api/stickers` — Delete all stickers
 - `GET /api/sticker?path=...` — Serve sticker image
@@ -45,6 +44,7 @@ cd ui && pnpm build    # Build frontend for production
 
 ## Environment Variables
 
-- `GEMINI_API_KEY` — Google Gemini API key (can also be set via frontend)
+- `AI_GATEWAY_BASE_URL` — Cloudflare AI Gateway endpoint
+- `AI_GATEWAY_API_TOKEN` — AI Gateway authentication token (BYOK for Gemini)
 - `PORT` — Server port (default: 8080)
 - `VITE_PORT` — Vite dev server port for proxy (default: 5173)

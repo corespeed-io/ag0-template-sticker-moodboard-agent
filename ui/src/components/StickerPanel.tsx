@@ -601,7 +601,7 @@ function StickerPreview({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-8 backdrop-blur-sm"
+      className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-8 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
