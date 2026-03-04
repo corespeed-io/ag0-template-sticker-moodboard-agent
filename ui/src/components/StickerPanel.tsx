@@ -301,7 +301,11 @@ export default function StickerPanel({ wsEvent }: Props) {
   // ── Download ────────────────────────────────────────────────
 
   const handleDownload = (sticker: Sticker) => {
-    window.open(`/api/sticker?path=${encodeURIComponent(sticker.path)}&download`, "_blank");
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = `/api/sticker?path=${encodeURIComponent(sticker.path)}&download`;
+    document.body.appendChild(iframe);
+    setTimeout(() => document.body.removeChild(iframe), 10000);
   };
 
   // ── Render ──────────────────────────────────────────────────
