@@ -305,10 +305,15 @@ export default function StickerPanel({ wsEvent }: Props) {
       const res = await fetch(`/api/sticker?path=${encodeURIComponent(sticker.path)}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sticker.name}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download failed:", err);
+      // Fallback: open in new tab
+      window.open(`/api/sticker?path=${encodeURIComponent(sticker.path)}`, "_blank");
     }
   };
 
